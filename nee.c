@@ -18,6 +18,7 @@
 typedef struct{
 	int screen_rows;
 	int screen_cols;
+	int x_index, y_index;
 }device_config;
 
 typedef struct{
@@ -39,7 +40,17 @@ char user_input_reader();
 void intput_parser();
 int get_cursor_position(int *rows, int *cols);
 void abAppend(append_buf *ab, const char *s, int len);
+void edit_init();
 
+
+void edit_init(){
+	E.x_index = 0;
+	E.y_index = 0;
+
+	if(get_window_size(E.screen_rows, E.screen_cols) == -1){
+		prog_abort("Editor window size initialized failed!\n");
+	}
+}
 
 
 void prog_abort(const char *s){
@@ -76,11 +87,16 @@ void editor_draw_raws(append_buf *b){
 			}
 
 			int padding = (E.screen_cols - welcome_msg_len)/2;
-
+			if (padding){
+				abAppend(b, "~", 1);
+				padding--;
+			}
+			while (padding--){
+				abAppend(b, " ", 1);
+			}
 		 	}else{
 				abAppend(b, "~", 1);
 			}
-
 			abAppend(b, "\x1b[K]", 3);
 			
 			if( i < E.screen_rows - 1){
@@ -104,14 +120,7 @@ int get_window_size(int *rows, int *cols) {
   }
 }
 
-
-void editor_initilize(){
-	if (get_window_size(&E.screen_rows, &E.screen_cols) == -1) prog_abort("getWindowSize");
-}
-
-
 void editor_refresh_screen(){
-
 	append_buf ab = APBUF_INIT;
 
 	abAppend(&ab, "\x1b[?25l", 6);
@@ -119,7 +128,12 @@ void editor_refresh_screen(){
 
 	editor_draw_raws(&ab);
 
+	char buf[32];
+	snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.y_index + 1, E.x_index + 1);
+	abAppend(&ab, buf, strlen(buf));
+
 	abAppend(&ab, "\x1b[H", 3);
+
 	write(STDOUT_FILENO, ab.b, ab.len);
 	abFree(&ab);
 }
@@ -187,10 +201,33 @@ char user_input_reader(){
 		if( nread == -1 && (errno != EAGAIN ) ) {
 			prog_abort("Read user input failed\n");
 		}
-		return c;
+	}
+
+	if (c == '\x1b'){
+		char seq[3];
+
+
 	}
 
 }
+
+void editor_move_cursor(char key){
+	switch (key) {
+		case 'a':
+			E.x_index--;
+			break;
+		case 'd':
+			E.x_index++;
+			break;
+		case 'w':
+			E.y_index++;
+			break;
+		case 's':
+			E.y_index--;
+			break;
+	}
+}
+
 
 
 void intput_parser(){
@@ -200,10 +237,24 @@ void intput_parser(){
 	switch(c){
 		
 		case(CTRL_KEY('q')):
+			write(STDOUT_FILENO, "\x1b[2J", 4);
+      		write(STDOUT_FILENO, "\x1b[H", 3);
+			exit(0);
 			break;
 		
-		defaut:
-			printf("%d, (%c)\n");
+		case 'w':
+			editor_move_cursor(c);
+			break;
+		case 's':
+			editor_move_cursor(c);
+			break;
+		case 'a':
+			editor_move_cursor(c);
+			break;
+		case 'd':
+			editor_move_cursor(c);
+			break;
+
 	}
 }
 
