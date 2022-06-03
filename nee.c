@@ -14,11 +14,30 @@
 #define APBUF_INIT {NULL, 0}
 #define CLEAN_SCREEN "\x1b[2J"
 
+enum editor_keys{
+	ARROW_LEFT = 1000,
+	ARROW_RIGHT,
+	ARROW_UP,
+	ARROW_DOWN,
+	DEL_KEY,
+	HOME_KEY,
+	END_KEY,
+	PAGE_UP,
+	PAGE_DOWN;
+};
+
+typedef struct{
+	int size;
+	char *chars;
+} erows;
+
 
 typedef struct{
 	int screen_rows;
 	int screen_cols;
 	int x_index, y_index;
+	int num_rows;
+	erow row;
 }device_config;
 
 typedef struct{
@@ -41,11 +60,25 @@ void intput_parser();
 int get_cursor_position(int *rows, int *cols);
 void abAppend(append_buf *ab, const char *s, int len);
 void edit_init();
+void editor_open();
+
+
+void editor_open(){
+	char *line = "Hello, World";
+	ssize_t len = 12;
+	E.num_rows.size = len;
+	E.num_rows.chars = malloc(len + 1);
+	memcpy(E.num_rows.chars, line, len);
+	E.num_rows.chars[len] = '\0';
+	E.num_rows = 1;
+}
 
 
 void edit_init(){
+
 	E.x_index = 0;
 	E.y_index = 0;
+	E.num_rows = 0;
 
 	if(get_window_size(E.screen_rows, E.screen_cols) == -1){
 		prog_abort("Editor window size initialized failed!\n");
@@ -192,7 +225,7 @@ void enable_raw_mode(){
 	}
 }
 
-char user_input_reader(){
+int user_input_reader(){
 
 	int nread;
 	char c;
@@ -203,27 +236,102 @@ char user_input_reader(){
 		}
 	}
 
-	if (c == '\x1b'){
+	if ( c == '\x1b' ){
 		char seq[3];
 
+		if(read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+		if(read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
 
+		if(seq[0] == '['){
+			if(seq[1] >= '0' && seq[1] <= '9'){
+
+				if(read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b';
+
+				if(seq[2] == '~'){
+					switch (seq[1]){
+						case '1':
+							return HOME_KEY;
+							break;
+						case '3':
+							return DEL_KEY;
+							break;
+						case '4':
+							return END_KEY;
+							break;
+						case '5':
+							return PAGE_UP;
+							break;
+						case '6':
+							return PAGE_DOWN;
+							break;
+						case '7':
+							return HOME_KEY;
+							break;
+						case '8':
+							return END_KEY;
+							break;
+					}
+				}
+			}else{
+				switch (seq[1]){
+					case 'A':
+						return ARROW_UP;
+						break;
+					case 'B':
+						return ARROW_DOWN;
+						break;
+					case 'C':
+						return ARROW_RIGHT;
+						break;
+					case 'D':
+						return ARROW_LEFT;
+						break;
+					case 'H':
+						return HOME_KEY;
+						break;
+					case 'F':
+						return END_KEY;
+						break;
+				}
+			}
+		} else if{
+			switch (seq[1] == 'O'){
+			case 'H':
+				return HOME_KEY;
+				break;
+			case 'F':
+				return END_KEY;
+				break;
+			}
+		}
+		return '\x1b';
+	}else{
+		return c;
 	}
 
 }
 
-void editor_move_cursor(char key){
+void editor_move_cursor(int key){
 	switch (key) {
-		case 'a':
-			E.x_index--;
+		case ARROW_LEFT:
+			if(E.x_index){
+				E.x_index++;
 			break;
-		case 'd':
-			E.x_index++;
+			}
+		case ARROW_RIGHT:
+			if(E.x_index != E.screen_rows - 1){
+				E.x_index++;
+			}
 			break;
-		case 'w':
-			E.y_index++;
+		case ARROW_UP:
+			if(E.y_index){
+				E.y_index++;
+			}
 			break;
-		case 's':
-			E.y_index--;
+		case ARROW_DOWN:
+			if(E.y_index){
+				E.y_index--;
+			}
 			break;
 	}
 }
@@ -232,7 +340,7 @@ void editor_move_cursor(char key){
 
 void intput_parser(){
 	
-	char c = user_input_reader();
+	int c = user_input_reader();
 	
 	switch(c){
 		
@@ -241,17 +349,35 @@ void intput_parser(){
       		write(STDOUT_FILENO, "\x1b[H", 3);
 			exit(0);
 			break;
+
+		case HOME_KEY:
+			E.x_index = 0;
+			break;
+		case END_KEY:
+			E.x_index = E.screen_cols - 1;
+			break;
+
+		case PAGE_UP:
+		case PAGE_DOWN:
+		{
+			int times = E.screen_rows;
+			while(times--){
+				editor_move_cursor( c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+			}
+		}
+
+
 		
-		case 'w':
+		case ARROW_UP:
 			editor_move_cursor(c);
 			break;
-		case 's':
+		case ARROW_DOWN:
 			editor_move_cursor(c);
 			break;
-		case 'a':
+		case ARROW_LEFT:
 			editor_move_cursor(c);
 			break;
-		case 'd':
+		case ARROW_RIGHT:
 			editor_move_cursor(c);
 			break;
 
@@ -260,9 +386,15 @@ void intput_parser(){
 
 
 int main(int argc, char *argv[]){
-	
+
 	enable_raw_mode();
-	intput_parser();
+	edit_init();
+	editor_open();
+
+	while (1){
+		editor_refresh_screen();
+		intput_parser();
+	}
 
   return 0;
 }
