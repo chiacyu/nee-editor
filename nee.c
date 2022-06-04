@@ -1,3 +1,7 @@
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <unistd.h>
 #include <termios.h>
@@ -37,7 +41,7 @@ typedef struct{
 	int screen_cols;
 	int x_index, y_index;
 	int num_rows;
-	erow row;
+	erow *row;
 }device_config;
 
 typedef struct{
@@ -61,16 +65,34 @@ int get_cursor_position(int *rows, int *cols);
 void abAppend(append_buf *ab, const char *s, int len);
 void edit_init();
 void editor_open();
+void editor_append_row(char *s, size_t len);
 
 
-void editor_open(){
-	char *line = "Hello, World";
-	ssize_t len = 12;
+void editor_open(char *filname){
+	FILE *fp = fopen(filename, "r");
+	if( !fp ){
+		prog_abort("Open file error\n");
+	}
+
+	char *line =NULL;
+	size_t linecap = 0;
+	ssize_t linelen;
+	linelen = getline(&line, &linecap, fp);
+
+	if(linelen != -1){
+		while (linelen > 0 && (line[linelen - 1] != '\r') || (line[linelen - 1] != '\n'))
+		{
+			linelen--;
+		}
 	E.num_rows.size = len;
 	E.num_rows.chars = malloc(len + 1);
 	memcpy(E.num_rows.chars, line, len);
 	E.num_rows.chars[len] = '\0';
 	E.num_rows = 1;
+	}
+	free(line);
+	fclose(fp);
+
 }
 
 
@@ -79,6 +101,7 @@ void edit_init(){
 	E.x_index = 0;
 	E.y_index = 0;
 	E.num_rows = 0;
+	E.row = NULL;
 
 	if(get_window_size(E.screen_rows, E.screen_cols) == -1){
 		prog_abort("Editor window size initialized failed!\n");
@@ -106,11 +129,22 @@ void abFree(append_buf *ab) {
 }
 
 
+void editor_append_row(char *s, size_t len){
+	E.row = realloc(E.row, sizeof(erows) * (E.num_rows + 1));
+	int at = E.num_rows;
+	E.row[at].size = len;
+	E.row[at].chars = malloc(len + 1);
+	memcpy(E.row[at].chars, s, len);
+	E.row[at].chars[len] = '\0';
+	E.num_rows++;
+}
+
 
 void editor_draw_raws(append_buf *b){
   	int i;
   	for (i = 0; i < E.screen_rows; i++) {
-		  if( i == E.screen_rows / 3){
+		if (i >= E.screen_rows){  
+		  if( i == E.screen_rows / 3 && E.num_rows == 0){
 		  	
 			char welcome_msg[100];
 			int welcome_msg_len = snprintf(welcome_msg , sizeof(welcome_msg), "Nee Editor -- Version %s", NEE_VERSION);
@@ -127,14 +161,17 @@ void editor_draw_raws(append_buf *b){
 			while (padding--){
 				abAppend(b, " ", 1);
 			}
-		 	}else{
+		}else{
 				abAppend(b, "~", 1);
-			}
-			abAppend(b, "\x1b[K]", 3);
-			
-			if( i < E.screen_rows - 1){
-				abAppend(b, "\r\n", 2);
-			}
+		}else{
+			int len = E.row[i].size;
+			if (len > E.screen_cols) len = E.screen_cols;
+			abAppend(b, E.row.chars, len);
+		}
+		abAppend(b, "\x1b[K", 3);
+		if( i < E.screen_rows - 1){
+			abAppend(b, "\r\n", 2);
+		}
  	 }
 }
 
@@ -389,8 +426,9 @@ int main(int argc, char *argv[]){
 
 	enable_raw_mode();
 	edit_init();
-	editor_open();
-
+	if (argc > 2){
+		editor_open(argv[1]);
+	}
 	while (1){
 		editor_refresh_screen();
 		intput_parser();
