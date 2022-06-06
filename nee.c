@@ -11,6 +11,8 @@
 #include <errno.h>
 #include <sys/ioctl.h>
 #include <string.h>
+#include <time.h>
+#include <stdarg.h>
 
 
 
@@ -51,6 +53,8 @@ typedef struct{
 	int num_rows;
 	erows *row;
 	char *filename;
+	char *status_msg[80];
+	time_t status_msg_time;
 	struct termios origin_termios;
 }device_config;
 
@@ -77,7 +81,9 @@ void editor_append_row(char *s, size_t len);
 void editor_update_row(erows *row);
 void editor_scroll();
 void editor_draw_status_bar(append_buf *b);
+void editor_draw_msg_bar(append_buf *b);
 int editor_row_cx_to_rx(erows *row, int cx);
+void editor_set_status_message(const char *fmt, ...);
 
 
 void editor_scroll(){
@@ -134,11 +140,13 @@ void edit_init(){
 	E.rx = 0;
 	E.row = NULL;
 	E.filename = NULL;
+	E.status_msg[0] = '\0';
+	E.status_msg_time = 0;
 
 	if(get_window_size(&E.screen_rows, &E.screen_cols) == -1){
 		prog_abort("Editor window size initialized failed!\n");
 	}
-	E.screen_rows -= 1;
+	E.screen_rows -= 2;
 }
 
 
@@ -249,16 +257,44 @@ void editor_draw_raws(append_buf *b){
 void editor_draw_status_bar(append_buf *b){
 	abAppend(b, "\x1b[7m", 4);
 	char status[80];
+	char rstatus[80];
 	int len = snprintf(status, sizeof(status), "%.20s - %d lines", E.filename ? E.filename : "[No Name]", E.num_rows);
+	int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d", E.y_index + 1, E.num_rows);
 	if(len < E.screen_cols){
 		len = E.screen_cols;
 	}
 	abAppend(b, status, len);
 	while(len < E.screen_cols){
-		abAppend(b, " ", 1);
-		len++;
+		if (E.screen_cols - len ==rlen){
+		abAppend(b, rstatus, 1);
+		break;
+		} else{
+			abAppend(b, " ", 1);
+			len++;
+		}
 	}
 	abAppend(b, "\x1b[m", 3);
+	abAppend(b, "\r\n", 2);
+}
+
+void editor_draw_msg_bar(append_buf *b){
+	abAppend(b, "\x1b[K", 3);
+	int msg_len = strlen(E.status_msg);
+	if(msg_len > E.screen_cols){
+		msg_len = E.screen_cols;
+	}
+	if(msg_len && time(NULL) - E.status_msg_time < 5){
+		abAppend(b, E.status_msg, msg_len);
+	}
+}
+
+
+void editor_set_status_message(const char *fmt, ...){
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(E.status_msg, sizeof(E.status_msg), fmt, ap);
+	va_end(ap);
+	E.status_msg_time = time(NULL);
 }
 
 
@@ -285,6 +321,8 @@ void editor_refresh_screen(){
 	abAppend(&ab, "\x1b[H", 3);
 
 	editor_draw_raws(&ab);
+	editor_draw_status_bar(&ab);
+	editor_draw_msg_bar(&ab);
 
 	char buf[32];
 	snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.y_index - E.row_offset) + 1, (E.rx - E.col_offset) + 1);
@@ -542,6 +580,9 @@ int main(int argc, char *argv[]){
 	if (argc > 2){
 		editor_open(argv[1]);
 	}
+
+	editor_set_status_message("Help : Ctrl-Q = QUIT");
+
 	while (1){
 		editor_refresh_screen();
 		intput_parser();
