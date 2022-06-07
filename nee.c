@@ -24,6 +24,7 @@
 #define CLEAN_SCREEN "\x1b[2J"
 
 enum editor_keys{
+	BACKSPACE = 127,
 	ARROW_LEFT = 1000,
 	ARROW_RIGHT,
 	ARROW_UP,
@@ -84,6 +85,7 @@ void editor_draw_status_bar(append_buf *b);
 void editor_draw_msg_bar(append_buf *b);
 int editor_row_cx_to_rx(erows *row, int cx);
 void editor_set_status_message(const char *fmt, ...);
+void editor_row_insert_char(erows *row, int at, int c);
 
 
 void editor_scroll(){
@@ -209,6 +211,23 @@ void editor_update_row(erows *row){
 	}
 	row->render[idx] = '\0';
 	row->rsize = idx;
+}
+
+void editor_row_insert_char(erows *row, int at, int c) {
+  if (at < 0 || at > row->size) at = row->size;
+  row->chars = realloc(row->chars, row->size + 2);
+  memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
+  row->size++;
+  row->chars[at] = c;
+  editorUpdateRow(row);
+}
+
+void editorInsertChar(int c) {
+  if (E.y_index == E.num_rows) {
+    editorAppendRow("", 0);
+  }
+  editorRowInsertChar(&E.row[E.y_index], E.x_index, c);
+  E.x_index++;
 }
 
 int editor_row_cx_to_rx(erows *row, int cx){
@@ -568,6 +587,10 @@ void intput_parser(){
 		case ARROW_RIGHT:
 			editor_move_cursor(c);
 			break;
+
+		default:
+      		editor_insert_char(c);
+      		break;
 
 	}
 }
