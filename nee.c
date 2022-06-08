@@ -13,6 +13,7 @@
 #include <string.h>
 #include <time.h>
 #include <stdarg.h>
+#include <fcntl.h>
 
 
 
@@ -52,6 +53,7 @@ typedef struct{
 	int row_offset;
 	int col_offset;
 	int num_rows;
+	int dirty;
 	erows *row;
 	char *filename;
 	char *status_msg[80];
@@ -86,6 +88,8 @@ void editor_draw_msg_bar(append_buf *b);
 int editor_row_cx_to_rx(erows *row, int cx);
 void editor_set_status_message(const char *fmt, ...);
 void editor_row_insert_char(erows *row, int at, int c);
+char *editor_rows_to_string(int *buflen);
+void editor_save();
 
 
 void editor_scroll(){
@@ -121,7 +125,7 @@ void editor_open(char *filename){
 	char *line =NULL;
 	size_t linecap = 0;
 	ssize_t linelen;
-	while ((linelen = getline(&line, &linecap, fp) != -1){
+	while ((linelen = getline(&line, &linecap, fp) != -1)){
 		while(linelen > 0 && (line[linelen - 1] == '\n' || line[linelen -1] == '\r')){
 			linelen--;
 		}
@@ -140,6 +144,7 @@ void edit_init(){
 	E.col_offset = 0;
 	E.num_rows = 0;
 	E.rx = 0;
+	E.dirty = 0;
 	E.row = NULL;
 	E.filename = NULL;
 	E.status_msg[0] = '\0';
@@ -185,6 +190,7 @@ void editor_append_row(char *s, size_t len){
 	editor_update_row(&E.row[at]);
 
 	E.num_rows++;
+	E.dirty++;
 }
 
 void editor_update_row(erows *row){
@@ -222,7 +228,7 @@ void editor_row_insert_char(erows *row, int at, int c) {
   editorUpdateRow(row);
 }
 
-void editorInsertChar(int c) {
+void editor_insert_char(int c) {
   if (E.y_index == E.num_rows) {
     editorAppendRow("", 0);
   }
@@ -277,7 +283,7 @@ void editor_draw_status_bar(append_buf *b){
 	abAppend(b, "\x1b[7m", 4);
 	char status[80];
 	char rstatus[80];
-	int len = snprintf(status, sizeof(status), "%.20s - %d lines", E.filename ? E.filename : "[No Name]", E.num_rows);
+	int len = snprintf(status, sizeof(status), "%.20s - %d lines", E.filename ? E.filename : "[No Name]", E.num_rows, E.dirty ? "(modified)" : "");
 	int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d", E.y_index + 1, E.num_rows);
 	if(len < E.screen_cols){
 		len = E.screen_cols;
@@ -314,6 +320,44 @@ void editor_set_status_message(const char *fmt, ...){
 	vsnprintf(E.status_msg, sizeof(E.status_msg), fmt, ap);
 	va_end(ap);
 	E.status_msg_time = time(NULL);
+}
+
+char *editor_rows_to_string(int *buflen){
+	int totlen = 0;
+	int j;
+	for (j = 0; j < E.num_rows; j++){
+		totlen += E.row[j].size + 1;
+	}
+  	*buflen = totlen;
+  	char *buf = malloc(totlen);
+  	char *p = buf;
+  	for (j = 0; j < E.num_rows; j++) {
+    memcpy(p, E.row[j].chars, E.row[j].size);
+    p += E.row[j].size;
+    *p = '\n';
+    p++;
+  }
+  return buf;
+}
+
+void editor_save() {
+  if (E.filename == NULL) return;
+  int len;
+  char *buf = editor_rows_to_string(&len);
+  int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
+  if (fd != -1) {
+    if (ftruncate(fd, len) != -1) {
+      if (write(fd, buf, len) == len) {
+        close(fd);
+        free(buf);
+		editor_set_status_message("%d bytes written to disk", len);
+        return;
+      }
+    }
+    close(fd);
+  }
+  free(buf);
+  editor_set_status_message("Fail to perform I/O task", strerror(errno));
 }
 
 
@@ -541,11 +585,21 @@ void intput_parser(){
 	
 	switch(c){
 		
+		case '\r':
+			break;
+
+		
 		case(CTRL_KEY('q')):
 			write(STDOUT_FILENO, "\x1b[2J", 4);
       		write(STDOUT_FILENO, "\x1b[H", 3);
 			exit(0);
 			break;
+
+
+    	case CTRL_KEY('s'):
+      		editor_save();
+      		break;
+		
 
 		case HOME_KEY:
 			E.x_index = 0;
@@ -555,6 +609,11 @@ void intput_parser(){
 			E.x_index = E.row[E.y_index].size;
 			}
 			break;
+
+		case BACKSPACE:
+    	case CTRL_KEY('h'):
+    	case DEL_KEY:
+     		break;
 
 		case PAGE_UP:
 		case PAGE_DOWN:
@@ -587,6 +646,9 @@ void intput_parser(){
 		case ARROW_RIGHT:
 			editor_move_cursor(c);
 			break;
+    	case CTRL_KEY('l'):
+    	case '\x1b':
+      		break;
 
 		default:
       		editor_insert_char(c);
@@ -604,7 +666,7 @@ int main(int argc, char *argv[]){
 		editor_open(argv[1]);
 	}
 
-	editor_set_status_message("Help : Ctrl-Q = QUIT");
+	editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit");
 
 	while (1){
 		editor_refresh_screen();
