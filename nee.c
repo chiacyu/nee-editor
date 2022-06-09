@@ -3,6 +3,7 @@
 #define _BSD_SOURCE
 #define _GNU_SOURCE
 
+
 #include <stdio.h>
 #include <unistd.h>
 #include <termios.h>
@@ -19,6 +20,7 @@
 
 #define NEE_VERSION "1.0.0"
 #define TAB_STOP 8
+#define KILO_QUIT_TIMES 3
 
 #define CTRL_KEY(k)((k)&0x1f)
 #define APBUF_INIT {NULL, 0}
@@ -88,8 +90,10 @@ void editor_draw_msg_bar(append_buf *b);
 int editor_row_cx_to_rx(erows *row, int cx);
 void editor_set_status_message(const char *fmt, ...);
 void editor_row_insert_char(erows *row, int at, int c);
+void editorRowDelChar(erows *row, int at);
 char *editor_rows_to_string(int *buflen);
 void editor_save();
+void editorDelChar();
 
 
 void editor_scroll(){
@@ -133,6 +137,7 @@ void editor_open(char *filename){
 	};
 	free(line);
 	fclose(fp);
+	E.dirty = 0;
 }
 
 
@@ -226,7 +231,18 @@ void editor_row_insert_char(erows *row, int at, int c) {
   row->size++;
   row->chars[at] = c;
   editorUpdateRow(row);
+  E.dirty++;
 }
+
+void editor_row_del_char(erows *row, int at) {
+  if (at < 0 || at >= row->size) return;
+  memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
+  row->size--;
+  editorUpdateRow(row);
+  E.dirty++;
+}
+
+
 
 void editor_insert_char(int c) {
   if (E.y_index == E.num_rows) {
@@ -235,6 +251,18 @@ void editor_insert_char(int c) {
   editorRowInsertChar(&E.row[E.y_index], E.x_index, c);
   E.x_index++;
 }
+
+
+
+void editor_del_char() {
+  if (E.y_index == E.num_rows) return;
+  erows *row = &E.row[E.y_index];
+  if (E.x_index > 0) {
+    editorRowDelChar(row, E.x_index - 1);
+    E.x_index--;
+  }
+}
+
 
 int editor_row_cx_to_rx(erows *row, int cx){
 	int rx = 0;
@@ -350,6 +378,7 @@ void editor_save() {
       if (write(fd, buf, len) == len) {
         close(fd);
         free(buf);
+		E.dirty = 0;
 		editor_set_status_message("%d bytes written to disk", len);
         return;
       }
@@ -580,6 +609,7 @@ void editor_move_cursor(int key){
 
 
 void intput_parser(){
+	static int quit_times = KILO_QUIT_TIMES;
 	
 	int c = user_input_reader();
 	
@@ -590,9 +620,12 @@ void intput_parser(){
 
 		
 		case(CTRL_KEY('q')):
-			write(STDOUT_FILENO, "\x1b[2J", 4);
-      		write(STDOUT_FILENO, "\x1b[H", 3);
-			exit(0);
+			if (E.dirty && quit_times > 0) {
+        		editorSetStatusMessage("WARNING!!! File has unsaved changes. "
+          		"Press Ctrl-Q %d more times to quit.", quit_times);
+        	quit_times--;
+        	return;
+      		}
 			break;
 
 
@@ -613,6 +646,8 @@ void intput_parser(){
 		case BACKSPACE:
     	case CTRL_KEY('h'):
     	case DEL_KEY:
+			if (c == DEL_KEY) editor_move_cursor(ARROW_RIGHT);
+      		editor_del_char();
      		break;
 
 		case PAGE_UP:
@@ -655,6 +690,7 @@ void intput_parser(){
       		break;
 
 	}
+	quit_times = KILO_QUIT_TIMES;
 }
 
 
