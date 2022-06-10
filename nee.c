@@ -90,10 +90,17 @@ void editor_draw_msg_bar(append_buf *b);
 int editor_row_cx_to_rx(erows *row, int cx);
 void editor_set_status_message(const char *fmt, ...);
 void editor_row_insert_char(erows *row, int at, int c);
-void editorRowDelChar(erows *row, int at);
+void editor_row_del_char(erows *row, int at);
 char *editor_rows_to_string(int *buflen);
 void editor_save();
-void editorDelChar();
+void editor_insert_row(int at, char *s, size_t len);
+void editor_del_char();
+void editor_free_row(erows *row);
+void editor_del_row(int at);
+void editor_row_append_string(erows *row, char *s, size_t len);
+void editor_insert_newline();
+void editor_refresh_screen();
+char *editor_prompt(char *prompt);
 
 
 void editor_scroll(){
@@ -133,7 +140,7 @@ void editor_open(char *filename){
 		while(linelen > 0 && (line[linelen - 1] == '\n' || line[linelen -1] == '\r')){
 			linelen--;
 		}
-		editor_append_row(line, linelen);
+		editor_insert_row(E.num_rows, line, linelen);
 	};
 	free(line);
 	fclose(fp);
@@ -230,7 +237,7 @@ void editor_row_insert_char(erows *row, int at, int c) {
   memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
   row->size++;
   row->chars[at] = c;
-  editorUpdateRow(row);
+  editor_update_row(row);
   E.dirty++;
 }
 
@@ -238,17 +245,32 @@ void editor_row_del_char(erows *row, int at) {
   if (at < 0 || at >= row->size) return;
   memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
   row->size--;
-  editorUpdateRow(row);
+  editor_update_row(row);
   E.dirty++;
+}
+
+void editor_insert_newline() {
+  if (E.x_index == 0) {
+    editor_insert_row(E.y_index, "", 0);
+  } else {
+    erows *row = &E.row[E.y_index];
+    editor_insert_row(E.y_index + 1, &row->chars[E.x_index], row->size - E.x_index);
+    row = &E.row[E.y_index];
+    row->size = E.x_index;
+    row->chars[row->size] = '\0';
+    editor_update_row(row);
+  }
+  E.y_index++;
+  E.x_index = 0;
 }
 
 
 
 void editor_insert_char(int c) {
   if (E.y_index == E.num_rows) {
-    editorAppendRow("", 0);
+    editor_insert_row(E.num_rows, " ", 0);
   }
-  editorRowInsertChar(&E.row[E.y_index], E.x_index, c);
+  editor_row_insert_char(&E.row[E.y_index], E.x_index, c);
   E.x_index++;
 }
 
@@ -258,8 +280,14 @@ void editor_del_char() {
   if (E.y_index == E.num_rows) return;
   erows *row = &E.row[E.y_index];
   if (E.x_index > 0) {
-    editorRowDelChar(row, E.x_index - 1);
+    editor_row_del_char(row, E.x_index - 1);
     E.x_index--;
+  }
+  else{
+	  E.x_index = E.row[E.y_index-1].size;
+	  editor_row_append_string(&E.row[E.y_index-1], row->chars, row->size);
+	  editor_del_row(E.y_index);
+	  E.y_index--;
   }
 }
 
@@ -368,8 +396,51 @@ char *editor_rows_to_string(int *buflen){
   return buf;
 }
 
+void editor_row_append_string(erows *row, char *s, size_t len) {
+  row->chars = realloc(row->chars, row->size + len + 1);
+  memcpy(&row->chars[row->size], s, len);
+  row->size += len;
+  row->chars[row->size] = '\0';
+  editor_update_row(row);
+  E.dirty++;
+}
+
+void editor_free_row(erows *row){
+	free(row->render);
+	free(row->chars);
+}
+
+void editor_insert_row(int at, char *s, size_t len) {
+  if (at < 0 || at > E.num_rows) return;
+  E.row = realloc(E.row, sizeof(erows) * (E.num_rows + 1));
+  memmove(&E.row[at + 1], &E.row[at], sizeof(erows) * (E.num_rows - at));
+  E.row[at].size = len;
+  E.row[at].chars = malloc(len + 1);
+  memcpy(E.row[at].chars, s, len);
+  E.row[at].chars[len] = '\0';
+  E.row[at].rsize = 0;
+  E.row[at].render = NULL;
+  editor_update_row(&E.row[at]);
+  E.num_rows++;
+  E.dirty++;
+}
+
+void editor_del_row(int at) {
+  if (at < 0 || at >= E.num_rows) return;
+  editor_free_row(&E.row[at]);
+  memmove(&E.row[at], &E.row[at + 1], sizeof(erows) * (E.num_rows - at - 1));
+  E.num_rows--;
+  E.dirty++;
+}
+
 void editor_save() {
-  if (E.filename == NULL) return;
+  if (E.filename == NULL){
+	  E.filename = editor_prompt("Save as: %s");
+	  if (E.filename == NULL){
+		  editor_set_status_message("Save aborted");
+		  return;
+	  }
+  } 
   int len;
   char *buf = editor_rows_to_string(&len);
   int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
@@ -390,7 +461,41 @@ void editor_save() {
 }
 
 
-int get_window_size(int *rows, int *cols) {
+char *editor_prompt(char *prompt) {
+  size_t bufsize = 128;
+  char *buf = malloc(bufsize);
+  size_t buflen = 0;
+  buf[0] = '\0';
+  while (1) {
+    editor_set_status_message(prompt, buf);
+    editor_refresh_screen();
+    int c = user_input_reader();
+	if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE) {
+    if (buflen != 0) buf[--buflen] = '\0';
+    }else if (c == '\x1b') {
+        editor_set_status_message("");
+		free(buf);
+        return NULL;
+    } else if (c == '\r'){
+		if(buflen != 0){
+			editor_set_status_message("");
+			return buf;
+		}
+	} 
+	else if (!iscntrl(c) && c < 128) {
+      if (buflen == bufsize - 1) {
+        bufsize *= 2;
+        buf = realloc(buf, bufsize);
+      }
+      buf[buflen++] = c;
+      buf[buflen] = '\0';
+    }
+  }
+}
+
+
+
+int get_window_size(int *rows, int *cols){
   struct winsize ws;
 
   	if (1 || ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
@@ -456,7 +561,7 @@ int get_cursor_position(int *rows, int *cols) {
 
 
 void disable_raw_mode(){
-	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &origin_termios) == -1){
+	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.origin_termios) == -1){
 		prog_abort("Set termios attribute failed while disabling raw mode\n");
 	}
 	
@@ -464,11 +569,11 @@ void disable_raw_mode(){
 
 void enable_raw_mode(){
 	
-	if(tcgetattr(STDIN_FILENO, &origin_termios) == -1){
+	if(tcgetattr(STDIN_FILENO, &E.origin_termios) == -1){
 		prog_abort("Get termios attribute failed while enabling raw mode\n");
 		atexit(disable_raw_mode);
 	}
-	struct termios raw = origin_termios;
+	struct termios raw = E.origin_termios;
         raw.c_iflag &= ~(ICRNL | BRKINT | INPCK | IXON | ISTRIP);
         raw.c_oflag &= ~(OPOST);
         raw.c_lflag &= ~(ECHO | ICANON | ISIG | IEXTEN);
@@ -616,12 +721,13 @@ void intput_parser(){
 	switch(c){
 		
 		case '\r':
+		editor_insert_newline();
 			break;
 
 		
 		case(CTRL_KEY('q')):
 			if (E.dirty && quit_times > 0) {
-        		editorSetStatusMessage("WARNING!!! File has unsaved changes. "
+        		editor_set_status_message("WARNING!!! File has unsaved changes. "
           		"Press Ctrl-Q %d more times to quit.", quit_times);
         	quit_times--;
         	return;
@@ -702,7 +808,7 @@ int main(int argc, char *argv[]){
 		editor_open(argv[1]);
 	}
 
-	editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit");
+	editor_set_status_message("HELP: Ctrl-S = save | Ctrl-Q = quit");
 
 	while (1){
 		editor_refresh_screen();
