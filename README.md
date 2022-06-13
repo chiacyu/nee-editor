@@ -1,7 +1,5 @@
 # nee-editor
-
-
-A minimalist text with different features.
+This is an minimal editor which provide some basic features including searching and syntax highlight.
 
 
 ## Usage
