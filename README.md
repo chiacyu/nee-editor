@@ -22,9 +22,18 @@ Here're some useful short-cut to use:
 * `Ctrl` + `S` : Save file.
 * `Ctrl` + `Q` : Quit the editor.
 * `Ctrl` + `F` : Find the specific syntax in file.
+  - `ESE` : Cancel search.
+  - `ENTER` : Perform search.
+  - `Arrows`: Navigate the cursor to `next` or `previous` fitting syntax.
 * `PageUp/PageDown` : Scroll Up/Down.
+* `Up/Down/Left/Right` : Move the current position of cursor.
+* `Home/End` : Move the cursor to the begining/end of editing line.
 
 
 
 
 ## License
+
+Nee editor is freely redistributable under the BSD 2 clause license. Use of
+this source code is governed by a BSD-style license that can be found in the
+LICENSE file.
