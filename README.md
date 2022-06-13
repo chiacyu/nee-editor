@@ -20,7 +20,9 @@ Then the program would enter the raw mode which would temporarily disable some k
 ```
 Here're some useful short-cut to use:
 * `Ctrl` + `S` : Save file.
-* 
+* `Ctrl` + `Q` : Quit the editor.
+* `Ctrl` + `F` : Find the specific syntax in file.
+* `PageUp/PageDown` : Scroll Up/Down.
 
 
 
