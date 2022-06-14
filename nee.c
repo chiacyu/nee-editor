@@ -1,8 +1,6 @@
-#include <sys/termios.h>
 #define _DEFAULT_SOURCE
 #define _BSD_SOURCE
 #define _GNU_SOURCE
-
 
 #include <stdio.h>
 #include <unistd.h>
@@ -15,8 +13,7 @@
 #include <time.h>
 #include <stdarg.h>
 #include <fcntl.h>
-
-
+#include <sys/termios.h>
 
 #define NEE_VERSION "1.0.0"
 #define TAB_STOP 8
@@ -77,7 +74,6 @@ typedef struct{
 	unsigned char *hl;
 	int hl_open_comment;
 } erows;
-
 
 typedef struct{
 	int screen_rows;
@@ -140,10 +136,12 @@ int is_separator(int c);
 char *C_HL_extensions[] = { ".c", ".h", ".cpp", NULL };
 
 char *C_HL_keywords[] = {
-  "switch", "if", "while", "for", "break", "continue", "return", "else",
-  "struct", "union", "typedef", "static", "enum", "class", "case",
-  "int|", "long|", "double|", "float|", "char|", "unsigned|", "signed|",
-  "void|", NULL
+  "switch", "if", "while", "for", 
+  "break", "continue", "return", "else",
+  "struct", "union", "typedef", "static", 
+  "enum", "class", "case", "int|", 
+  "long|", "double|", "float|", "char|", 
+  "unsigned|", "signed|", "void|", NULL
 };
 
 editor_syntax HLDB[] = {
