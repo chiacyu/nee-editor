@@ -7,7 +7,7 @@ Open your terminal then compile the editor by make then you can get the executab
 ```
 user$ ./nee <filename>
 ```
-Then the program would enter the raw mode which would temporarily disable some keyboard functionalities.
+Then the program would enter the raw mode which would temporarily disable some keyboard functionalities. Then you can edit the file by typing the keyboard to insert characters you want.
 
 ```
 ~
