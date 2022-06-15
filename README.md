@@ -1,5 +1,5 @@
 # nee-editor
-This is an minimal editor which provide some basic features including searching and syntax highlight. This editor is inspired by the excellent tutorial [Build your own text editor](https://viewsourcecode.org/snaptoken/kilo/index.html). I also extend some additional functionalities.
+This is an minimal editor which provide some basic features including searching and syntax highlight. This editor is inspired by the excellent tutorial [Build your own text editor](https://viewsourcecode.org/snaptoken/kilo/index.html). I follow mostly the program structure from the tutorial but I also extended some additional functionalities.
 
 
 ## Usage
@@ -7,7 +7,7 @@ Open your terminal then compile the editor by make then you can get the executab
 ```
 user$ ./nee <filename>
 ```
-Then the program would enter the raw mode which would temporarily disable some keyboard functionalities. Then you can edit the file by typing the keyboard to insert characters you want.
+Then the program would enter the raw mode which would temporarily disable some keyboard functionalities. Then you can edit the file by typing the keyboard to insert characters you want. You can try to press some keys then you would see the output shows up on your screen.
 
 ```
 ~
