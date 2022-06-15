@@ -1,5 +1,5 @@
 # nee-editor
-This is an minimal editor which provide some basic features including searching and syntax highlight. 
+This is an minimal editor which provide some basic features including searching and syntax highlight. This editor is inspired by the excellent tutorial [Build your own text editor](https://viewsourcecode.org/snaptoken/kilo/index.html). I also extend some additional functionalities.
 
 
 ## Usage
